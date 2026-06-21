@@ -148,6 +148,21 @@ class AcceptanceActionView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    def get_target_id_from_embed(self, message: discord.Message) -> int:
+        """פונקציית עזר חכמה ומאובטחת לחילוץ האיידי של המשתמש מתוך ה-Mention ב-Embed"""
+        try:
+            if message.embeds and message.embeds.description:
+                description = message.embeds.description
+                if "<@" in description and ">" in description:
+                    start = description.find("<@") + 2
+                    if description[start] == "!" or description[start] == "&":
+                        start += 1
+                    end = description.find(">", start)
+                    return int(description[start:end].strip())
+        except Exception as e:
+            print(f"Error parsing target ID from embed mention: {e}")
+        return 0
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         required_role_id = 1518269453295685652
         if required_role_id not in [role.id for role in interaction.user.roles]:
@@ -158,58 +173,51 @@ class AcceptanceActionView(discord.ui.View):
     @discord.ui.button(label="👢 תן קיק (Kick)", style=discord.ButtonStyle.danger, custom_id="accept_kick_fixed_final", row=0)
     async def kick_user_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         class KickModal(discord.ui.Modal, title="ביצוע בעיטה (Kick) למשתמש"):
-            user_id = discord.ui.TextInput(label="הכנס את מזהה המשתמש (User ID):", placeholder="למשל: 1481717480492630236", required=True)
+            reason = discord.ui.TextInput(label="סיבת הבעיטה (לא חובה):", default="נדחה במערכת בדיקת משתמש", required=False)
             
             async def on_submit(self, sub_interaction: discord.Interaction):
-                try:
-                    target_id = int(self.user_id.value.strip())
-                    target_member = sub_interaction.guild.get_member(target_id)
-                    if not target_member:
-                        await sub_interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
-                        return
-                    await target_member.kick(reason="נדחה במערכת בדיקת משתמש על ידי ההנהלה")
-                    await sub_interaction.response.send_message(f"👢 המשתמש {target_member.name} נזרק מהשרת בהצלחה.", ephemeral=True)
-                except ValueError:
-                    await sub_interaction.response.send_message("❌ נא להזין מספר ID תקין בלבד!", ephemeral=True)
-                except Exception as e:
-                    await sub_interaction.response.send_message(f"❌ שגיאה במתן קיק: {e}", ephemeral=True)
+                target_id = sub_interaction.view.get_target_id_from_embed(sub_interaction.message)
+                if target_id == 0:
+                    await sub_interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את המשתמש בטופס!", ephemeral=True)
+                    return
+                target_member = sub_interaction.guild.get_member(target_id)
+                if not target_member:
+                    await sub_interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
+                    return
+                await target_member.kick(reason=self.reason.value)
+                await sub_interaction.response.send_message(f"👢 המשתמש {target_member.name} נזרק מהשרת בהצלחה.", ephemeral=True)
 
         await interaction.response.send_modal(KickModal())
 
     @discord.ui.button(label="🔨 תן באן (Ban)", style=discord.ButtonStyle.danger, custom_id="accept_ban_fixed_final", row=0)
     async def ban_user_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         class BanModal(discord.ui.Modal, title="ביצוע חסימה (Ban) למשתמש"):
-            user_id = discord.ui.TextInput(label="הכנס את מזהה המשתמש (User ID):", placeholder="למשל: 1481717480492630236", required=True)
+            reason = discord.ui.TextInput(label="סיבת החסימה (לא חובה):", default="נדחה במערכת בדיקת משתמש", required=False)
             
             async def on_submit(self, sub_interaction: discord.Interaction):
-                try:
-                    target_id = int(self.user_id.value.strip())
-                    await sub_interaction.guild.ban(discord.Object(id=target_id), reason="נדחה במערכת בדיקת משתמש")
-                    await sub_interaction.response.send_message(f"🔨 האיידי `{target_id}` נחסם מהשרת לצמיתות.", ephemeral=True)
-                except ValueError:
-                    await sub_interaction.response.send_message("❌ נא להזין מספר ID תקין בלבד!", ephemeral=True)
-                except Exception as e:
-                    await sub_interaction.response.send_message(f"❌ שגיאה במתן באן: {e}", ephemeral=True)
+                target_id = sub_interaction.view.get_target_id_from_embed(sub_interaction.message)
+                if target_id == 0:
+                    await sub_interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את המשתמש בטופס!", ephemeral=True)
+                    return
+                await sub_interaction.guild.ban(discord.Object(id=target_id), reason=self.reason.value)
+                await sub_interaction.response.send_message(f"🔨 האיידי `{target_id}` נחסם מהשרת לצמיתות.", ephemeral=True)
 
         await interaction.response.send_modal(BanModal())
 
     @discord.ui.button(label="🛡️ בחר רולים וסיום (Approve)", style=discord.ButtonStyle.success, custom_id="accept_approve_fixed_final", row=1)
     async def select_roles_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        class ApproveModal(discord.ui.Modal, title="אישור משתמש והענקת רולים"):
-            user_id = discord.ui.TextInput(label="הכנס את מזהה המשתמש (User ID):", placeholder="למשל: 1481717480492630236", required=True)
+        # הבוט קורא את האיידי ושולח את הדרופדאון החסוי באופן ישיר ומיידי ללא Modal כפול ומייגע!
+        target_id = self.get_target_id_from_embed(interaction.message)
+        if target_id == 0:
+            await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את המשתמש בטופס!", ephemeral=True)
+            return
             
-            async def on_submit(self, sub_interaction: discord.Interaction):
-                try:
-                    target_id = int(self.user_id.value.strip())
-                    target_member = sub_interaction.guild.get_member(target_id)
-                    if not target_member:
-                        await sub_interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
-                        return
-                    await sub_interaction.response.send_message(f"אנא בחר מהרשימה מטה את הרולים שברצונך לתת ל-{target_member.mention}:", view=RoleSelectionView(target_member, sub_interaction.view), ephemeral=True)
-                except ValueError:
-                    await sub_interaction.response.send_message("❌ נא להזין מספר ID תקין בלבד!", ephemeral=True)
-
-        await interaction.response.send_modal(ApproveModal())
+        target_member = interaction.guild.get_member(target_id)
+        if not target_member:
+            await interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
+            return
+            
+        await interaction.response.send_message(f"אנא בחר מהרשימה מטה את הרולים שברצונך לתת ל-{target_member.mention}:", view=RoleSelectionView(target_member, self), ephemeral=True)
 class RoleDropdownSelector(discord.ui.Select):
     def __init__(self, target_member: discord.Member, original_view: discord.ui.View):
         self.target_member = target_member
@@ -519,7 +527,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="🕶️ חמ\"ל הזמנות ואספקת מאפיה - Metrolin IL",
-            description=f"ברוך הבא {interaction.user.mention} ,\nפתחתי עבורך פניית מאפיה מאובטחת.\n\n**📊 נתוני מלאי עדכניים בשרת:**\n{stock_text}\n\nצוות המאפיה יגיע לסגור איתך את העסקה מיד.",
+            description=f"ברוך הבא {interaction.user.mention},\nפתחתי עבורך פניית מאפיה מאובטחת.\n\n**📊 נתוני מלאי עדכניים בשרת:**\n{stock_text}\n\nצוות המאפיה יגיע לסגור איתך את העסקה מיד.",
             color=discord.Color.dark_purple()
         )
         embed.set_image(url="attachment://background.gif")
@@ -598,7 +606,7 @@ class MafiaTicketControlView(discord.ui.View):
 
     @discord.ui.button(label="🤝 קח טיפול", style=discord.ButtonStyle.success, custom_id="m_claim")
     async def m_claim(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.channel.send(f"🕶️ צוות המאפיה {interaction.user.mention} לקח את ההזמנה שלך לטיפול אישיי ומאובטח.")
+        await interaction.channel.send(f"🕶️ צוות המאפיה {interaction.user.mention} לקח את ההזמנה שלך לטיפול אישי ומאובטח.")
         button.disabled = True
         await interaction.message.edit(view=self)
         await interaction.response.defer()
