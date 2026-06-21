@@ -14,6 +14,9 @@ MAFIA_INVENTORY = {
     "drugs": 250
 }
 
+# משתנה גלובלי לשמירת מזהה הודעת הפאנל הראשית לצורך עריכה ועדכון בלייב
+MAFIA_PANEL_MESSAGE_ID = 0
+
 # מילון גלובלי למעקב אחרי קישורי הזמנה (Invite Tracker)
 invites = {}
 async def update_bot_status():
@@ -44,7 +47,7 @@ async def on_ready():
     bot.add_view(TicketControlView())
     bot.add_view(AbsenceLaunchView())
     bot.add_view(AbsenceApprovalView())
-    bot.add_view(MafiaTicketLaunchView())
+    bot.add_view(MafiaPanelLaunchView()) # ה-View הראשי המעודכן של חנות המאפיה
     bot.add_view(MafiaTicketControlView(ticket_type=""))
 def find_invite_by_code(invite_list, code):
     for inv in invite_list:
@@ -370,7 +373,7 @@ class TicketLaunchView(discord.ui.View):
         ]
     )
     async def select_ticket(self, interaction: discord.Interaction, select: discord.ui.Select):
-        topic = select.values
+        topic = select.values[0]
         guild = interaction.guild
         staff_role = guild.get_role(1518269453295685652)
         
@@ -460,7 +463,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         ]
     )
     async def select_mafia(self, interaction: discord.Interaction, select: discord.ui.Select):
-        chosen_value = select.values[0] if isinstance(select.values, list) else select.values
+        chosen_value = select.values if isinstance(select.values, list) else select.values
         
         guild = interaction.guild
         mafia_staff = guild.get_role(1518267524050063440)
@@ -488,13 +491,75 @@ class MafiaTicketLaunchView(discord.ui.View):
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="🕶️ חמ\"ל הזמנות ואספקת מאפיה - Metrolin IL",
-            description=f"ברוך הבא {interaction.user.mention} ,\nפתחתי עבורך פניית מאפיה מאובטחת.\n\n**📊 נתוני מלאי עדכניים בשרת:**\n{stock_text}\n\nצוות המאפיה יגיע לסגור איתך את העסקה מיד.",
+            description=f"ברוך הבא {interaction.user.mention},\nפתחתי עבורך פניית מאפיה מאובטחת.\n\n**📊 נתוני מלאי עדכניים בשרת:**\n{stock_text}\n\nצוות המאפיה יגיע לסגור איתך את העסקה מיד.",
             color=discord.Color.dark_purple()
         )
         embed.set_image(url="attachment://background.gif")
         
         await mafia_channel.send(file=file, embed=embed, view=MafiaTicketControlView(ticket_type=str(chosen_value)))
         await interaction.response.send_message(f"✅ הזמנת המאפיה שלך נפתחה בהצלחה בחדר: {mafia_channel.mention}", ephemeral=True)
+class MafiaPanelLaunchView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="בחר סוג הזמנת מאפיה...",
+        custom_id="mafia_ticket_select_v2",
+        options=[
+            discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
+            discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
+            discord.SelectOption(label="אחר / בירור מאפיה", value="other", description="נושאים כלליים הקשורים למאפיה", emoji="💼")
+        ],
+        row=0
+    )
+    async def select_mafia_v2(self, interaction: discord.Interaction, select: discord.ui.Select):
+        # יצירת מופע של מערכת פתיחת הטיקטים המקורית מחלק 11 והרצתה בצורה מאובטחת
+        launcher = MafiaTicketLaunchView()
+        await launcher.select_mafia(interaction, select)
+
+    @discord.ui.button(label="⚙️ ניהול ועדכון מלאי (צוות בלבד)", style=discord.ButtonStyle.secondary, custom_id="mafia_owner_manage_stock", row=1)
+    async def manage_stock_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        required_role_id = 1518267524050063440
+        if required_role_id not in [role.id for role in interaction.user.roles]:
+            await interaction.response.send_message("❌ אין לך את רול צוות המאפיה הנדרש לניהול החנות!", ephemeral=True)
+            return
+
+        class GlobalStockModal(discord.ui.Modal, title="ניהול מלאי חנות המאפיה"):
+            weapons_input = discord.ui.TextInput(label="כמות נשקים חמים חדשה במלאי:", default=str(MAFIA_INVENTORY["weapons"]), required=True)
+            drugs_input = discord.ui.TextInput(label="כמות סמים / חומרים חדשה במלאי:", default=str(MAFIA_INVENTORY["drugs"]), required=True)
+
+            async def on_submit(self, sub_interaction: discord.Interaction):
+                try:
+                    w_val = int(self.weapons_input.value)
+                    doc_val = int(self.drugs_input.value)
+                    
+                    MAFIA_INVENTORY["weapons"] = w_val
+                    MAFIA_INVENTORY["drugs"] = doc_val
+                    
+                    global MAFIA_PANEL_MESSAGE_ID
+                    if MAFIA_PANEL_MESSAGE_ID != 0:
+                        try:
+                            main_msg = await sub_interaction.channel.fetch_message(MAFIA_PANEL_MESSAGE_ID)
+                            if main_msg and main_msg.embeds:
+                                main_embed = main_msg.embeds[0]
+                                main_embed.description = (
+                                    "רוצה לבצע הזמנת נשקים חמים או סחורת סמים עבור הארגון שלך?\n"
+                                    "בחר את סוג ההברחה בתפריט הדרופדאון למטה וחדר עסקה סודי ייפתח מול ברוני המאפיה.\n\n"
+                                    f"**📊 מלאי עדכני בחנות המאפיה:**\n"
+                                    f"🔫 נשקים חמים: **{w_val} יחידות**\n"
+                                    f"🌿 סמים וחומרים: **{doc_val} ק\"ג**"
+                                )
+                                await main_msg.edit(embed=main_embed)
+                        except Exception as e:
+                            print(f"Could not update main shop panel embed: {e}")
+
+                    await sub_interaction.response.send_message(f"✅ מלאי החנות עודכן בהצלחה!\n🔫 נשקים: **{w_val}** | 🌿 סמים: **{doc_val}**", ephemeral=True)
+                except ValueError:
+                    await sub_interaction.response.send_message("❌ נא להזין מספרים שלמים בלבד!", ephemeral=True)
+
+        await interaction.response.send_modal(GlobalStockModal())
+
+
 class MafiaTicketControlView(discord.ui.View):
     def __init__(self, ticket_type: str = ""):
         super().__init__(timeout=None)
@@ -533,7 +598,7 @@ class MafiaTicketControlView(discord.ui.View):
                     else:
                         await sub_interaction.response.send_message("❌ המשתמש לא נמצא בשרת.", ephemeral=True)
                 except:
-                    await sub_interaction.response.send_message("❌ מזהה איידי לא תקין.", ephemeral=True)
+                    await sub_interaction.response.send_message("❌ mזהה איידי לא תקין.", ephemeral=True)
         await interaction.response.send_modal(AddMafiaUserModal())
 
     @discord.ui.button(label="📦 עדכן מלאי (מלאי סחורה)", style=discord.ButtonStyle.primary, custom_id="m_update_stock")
@@ -550,7 +615,7 @@ class MafiaTicketControlView(discord.ui.View):
             await interaction.response.send_message("❌ בטיקט זה אין ניהול מלאי מוגדר וממוחשב.", ephemeral=True)
             return
 
-        class UpdateStockModal(discord.ui.Modal, title="עדכון מלאי סחורה גלובלי"):
+        class UpdateStockModal(discord.ui.Modal, title="עדכון מלאי סחורה"):
             amount = discord.ui.TextInput(label="הכנס כמות חדשה להגדרה במלאי השרת:")
             async def on_submit(self, sub_interaction: discord.Interaction):
                 try:
@@ -582,9 +647,6 @@ class MafiaTicketControlView(discord.ui.View):
         modal = UpdateStockModal()
         modal.ticket_kind = t_type
         await interaction.response.send_modal(modal)
-
-# ==================== פקודות הקמה (Setup) נפרדות ועצמאיות לכל חדר ====================
-
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup_verification(ctx):
@@ -606,10 +668,23 @@ async def setup_tickets(ctx):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup_mafia(ctx):
+    global MAFIA_PANEL_MESSAGE_ID
     file = discord.File("background.gif", filename="background.gif")
-    embed = discord.Embed(title="🕶️ חמ\"ל אספקת נשקים וסמים - המאפיה הרשמית", description="רוצה לבצע הזמנת נשקים חמים או סחורת סמים עבור הארגון שלך?\nבחר את סוג ההברחה בתפריט הדרופדאון למטה וחדר עסקה סודי ייפתח מול ברוני המאפיה.", color=discord.Color.dark_purple())
+    embed = discord.Embed(
+        title="🕶️ חמ\"ל אספקת נשקים וסמים - המאפיה הרשמית", 
+        description=(
+            "רוצה לבצע הזמנת נשקים חמים או סחורת סמים עבור הארגון שלך?\n"
+            "בחר את סוג ההברחה בתפריט הדרופדאון למטה וחדר עסקה סודי ייפתח מול ברוני המאפיה.\n\n"
+            f"**📊 מלאי עדכני בחנות המאפיה:**\n"
+            f"🔫 נשקים חמים: **{MAFIA_INVENTORY['weapons']} יחידות**\n"
+            f"🌿 סמים וחומרים: **{MAFIA_INVENTORY['drugs']} ק\"ג**"
+        ), 
+        color=discord.Color.dark_purple()
+    )
     embed.set_image(url="attachment://background.gif")
-    await ctx.send(file=file, embed=embed, view=MafiaTicketLaunchView())
+    
+    panel_msg = await ctx.send(file=file, embed=embed, view=MafiaPanelLaunchView())
+    MAFIA_PANEL_MESSAGE_ID = panel_msg.id
     await ctx.message.delete()
 
 @bot.command()
@@ -621,10 +696,12 @@ async def setup_absence(ctx):
     await ctx.send(file=file, embed=embed, view=AbsenceLaunchView())
     await ctx.message.delete()
 
+# הפעלת שרת האינטרנט Flask ברקע עבור Render לשמירה 24/7 באוויר
 keep_alive()
 
+# הרצת הבוט הסופית באמצעות הטוקן המאובטח מ-Environment Variables
 token = os.environ.get("DISCORD_TOKEN")
 if token:
     bot.run(token)
 else:
-    print("שגיאה קריטית: ה-DISCORD_TOKEN לא מוגדר בשרת!")
+    print("שגיאה קריטית: ה-DISCORD_TOKEN לא מוגדר בהגדרות שרת ה-Render!")
