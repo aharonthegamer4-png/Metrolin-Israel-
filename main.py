@@ -128,7 +128,7 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="📝 טופס קבלה חדש ממתין לאישור",
-            description=f"**המשתמש המגיש:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
+            description=f"**המשתמש המגיש:** {interaction.user.mention}\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
             color=discord.Color.orange()
         )
         embed.set_image(url="attachment://background.gif")
@@ -149,16 +149,19 @@ class AcceptanceActionView(discord.ui.View):
         super().__init__(timeout=None)
 
     def get_target_id_from_embed(self, message: discord.Message) -> int:
-        """פונקציית עזר חכמה ומאובטחת לחילוץ האיידי של המשתמש מתוך שורת ה-ID ב-Embed"""
+        """פונקציית עזר חכמה לחילוץ האיידי של המשתמש ישירות מתוך התיוג ב-Embed"""
         try:
             if message.embeds and message.embeds.description:
                 description = message.embeds.description
-                for line in description.split("\n"):
-                    if "ID:" in line:
-                        clean_id = line.replace("ID:", "").replace("`", "").strip()
-                        return int(clean_id)
+                # חיפוש הסימנים של התיוג בתוך הטקסט
+                if "<@" in description and ">" in description:
+                    start = description.find("<@") + 2
+                    if description[start] == "!" or description[start] == "&":
+                        start += 1
+                    end = description.find(">", start)
+                    return int(description[start:end].strip())
         except Exception as e:
-            print(f"Error parsing target ID from embed description: {e}")
+            print(f"Error parsing target ID from embed mention: {e}")
         return 0
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -320,9 +323,9 @@ class AbsenceApprovalView(discord.ui.View):
                 description = message.embeds.description
                 for line in description.split("\n"):
                     if "שם המחסיר:" in line:
-                        name = line.split("`")[1].strip()
+                        name = line.split("`").strip()
                     elif "משך החיסור:" in line:
-                        duration = line.split("`")[1].strip()
+                        duration = line.split("`").strip()
         except Exception as e:
             print(f"Error parsing absence embed: {e}")
         return member_id, name, duration
