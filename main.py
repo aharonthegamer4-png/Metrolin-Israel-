@@ -128,7 +128,7 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="📝 טופס קבלה חדש ממתין לאישור",
-            description=f"**המשתמש המגיש:** <@{interaction.user.id}>\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
+            description=f"**המשתמש המגיש:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
             color=discord.Color.orange()
         )
         embed.set_image(url="attachment://background.gif")
@@ -149,14 +149,14 @@ class AcceptanceActionView(discord.ui.View):
         super().__init__(timeout=None)
 
     def get_target_id_from_embed(self, message: discord.Message) -> int:
-        """פונקציית עזר חכמה ומאובטחת לחילוץ האיידי של המשתמש מתוך ה-Mention ב-Embed"""
+        """פונקציית עזר חכמה ומאובטחת לחילוץ האיידי של המשתמש מתוך שורת ה-ID ב-Embed"""
         try:
-            if message.embeds:
+            if message.embeds and message.embeds.description:
                 description = message.embeds.description
                 for line in description.split("\n"):
-                    if "המשתמש המגיש:" in line:
-                        clean_line = line.replace("<@", "").replace(">", "")
-                        return int(clean_line.split(":")[-1].strip())
+                    if "ID:" in line:
+                        clean_id = line.replace("ID:", "").replace("`", "").strip()
+                        return int(clean_id)
         except Exception as e:
             print(f"Error parsing target ID from embed description: {e}")
         return 0
@@ -495,7 +495,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         options=[
             discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
             discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
-            discord.SelectOption(label="אחר / בירור מאפיה", value="other", description="נושאים הקשורים למאפיה", emoji="💼")
+            discord.SelectOption(label="אחר / בירור מאפיה", value="other", description="נושאים כלליים הקשורים למאפיה", emoji="💼")
         ]
     )
     async def select_mafia(self, interaction: discord.Interaction, select: discord.ui.Select):
