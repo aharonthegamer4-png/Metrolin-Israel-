@@ -43,7 +43,7 @@ async def on_ready():
     bot.add_view(TicketLaunchView())
     bot.add_view(TicketControlView())
     bot.add_view(AbsenceLaunchView())
-    bot.add_view(AbsenceApprovalView(member_id=0, name="", duration=""))
+    bot.add_view(AbsenceApprovalView())
     bot.add_view(MafiaTicketLaunchView())
     bot.add_view(MafiaTicketControlView(ticket_type=""))
 def find_invite_by_code(invite_list, code):
@@ -124,7 +124,6 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         )
         embed.set_image(url="attachment://background.gif")
         
-        # שליחת הטופס לערוץ ההנהלה עם ה-View המאובטח והמתוקן
         await review_channel.send(file=file, embed=embed, view=AcceptanceActionView())
         await interaction.response.send_message("הטופס שלך נשלח בהצלחה לבדיקת הנהלת השרת! אנא המתן לאישור.", ephemeral=True)
 
@@ -143,10 +142,10 @@ class AcceptanceActionView(discord.ui.View):
         """פונקציית עזר לחילוץ האיידי של המשתמש מתוך הודעת ה-Embed של הטופס"""
         try:
             if message.embeds:
-                description = message.embeds[0].description
+                description = message.embeds.description
                 for line in description.split("\n"):
                     if "מזהה משתמש (ID):" in line:
-                        return int(line.split("`")[1])
+                        return int(line.split("`"))
         except Exception as e:
             print(f"Error parsing target ID from embed: {e}")
         return 0
@@ -275,11 +274,7 @@ class AbsenceModal(discord.ui.Modal, title="טופס הגשת חיסור - צו�
         )
         embed.set_image(url="attachment://background.gif")
         
-        await approval_channel.send(
-            file=file, 
-            embed=embed, 
-            view=AbsenceApprovalView(member_id=interaction.user.id, name=self.name.value, duration=self.duration.value)
-        )
+        await approval_channel.send(file=file, embed=embed, view=AbsenceApprovalView(member_id=interaction.user.id, name=self.name.value, duration=self.duration.value))
         await interaction.response.send_message("✅ בקשת החיסור שלך נשלחה בהצלחה לבדיקת ההנהלה!", ephemeral=True)
 
 class AbsenceLaunchView(discord.ui.View):
@@ -290,14 +285,30 @@ class AbsenceLaunchView(discord.ui.View):
     async def launch_absence(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AbsenceModal())
 class AbsenceApprovalView(discord.ui.View):
-    def __init__(self, member_id: int, name: str, duration: str):
+    def __init__(self, member_id: int = 0, name: str = "", duration: str = ""):
         super().__init__(timeout=None)
         self.member_id = member_id
         self.name = name
         self.duration = duration
-        if member_id != 0:
-            self.approve_btn.custom_id = f"abs_approve_{member_id}"
-            self.deny_btn.custom_id = f"abs_deny_{member_id}"
+
+    def parse_absence_embed(self, message: discord.Message):
+        member_id = 0
+        name = "לא ידוע"
+        duration = "לא מוגדר"
+        try:
+            if message.embeds:
+                description = message.embeds.description
+                for line in description.split("\n"):
+                    if "מגיש הבקשה:" in line:
+                        clean_line = line.replace("<@", "").replace(">", "")
+                        member_id = int(clean_line.split(":")[-1].strip())
+                    elif "שם:" in line:
+                        name = line.split(":")[-1].strip()
+                    elif "משך החיסור:" in line:
+                        duration = line.split(":")[-1].strip()
+        except Exception as e:
+            print(f"Error parsing absence embed: {e}")
+        return member_id, name, duration
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         required_role_id = 1518269453295685652
@@ -306,10 +317,12 @@ class AbsenceApprovalView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="✅ אשר חיסור", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="✅ אשר חיסור", style=discord.ButtonStyle.success, custom_id="abs_approve_fixed_btn")
     async def approve_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         public_log_id = 1510196538490622058
         public_channel = interaction.guild.get_channel(public_log_id)
+        
+        m_id, m_name, m_duration = self.parse_absence_embed(interaction.message)
         
         for item in self.children:
             item.disabled = True
@@ -319,7 +332,7 @@ class AbsenceApprovalView(discord.ui.View):
             file = discord.File("background.gif", filename="background.gif")
             embed = discord.Embed(
                 title="📢 עדכון סטטוס חיסורי צוות פשע",
-                description=f"**איש הצוות:** <@{self.member_id}>\n**שם:** {self.name}\n**זמן חיסור:** {self.duration}\n**סטטוס:** אושר באופן רשמי ע\"י ההנהלה ✅",
+                description=f"**איש הצוות:** <@{m_id if m_id != 0 else interaction.user.id}>\n**שם:** {m_name}\n**זמן חיסור:** {m_duration}\n**סטטוס:** אושר באופן רשמי ע\"י ההנהלה ✅",
                 color=discord.Color.green()
             )
             embed.set_image(url="attachment://background.gif")
@@ -327,17 +340,21 @@ class AbsenceApprovalView(discord.ui.View):
             
         await interaction.response.send_message("✅ החיסור אושר ופורסם בלוג הציבורי בהצלחה.", ephemeral=True)
 
-    @discord.ui.button(label="❌ דחה חיסור", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="❌ דחה חיסור", style=discord.ButtonStyle.danger, custom_id="abs_deny_fixed_btn")
     async def deny_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        m_id, _, _ = self.parse_absence_embed(interaction.message)
+        
         for item in self.children:
             item.disabled = True
         await interaction.message.edit(view=self)
-        try:
-            user = await bot.fetch_user(self.member_id)
-            await user.send("❌ בקשת החיסור שהגשת בשרת Metrolin IL נדחתה על ידי ההנהלה.")
-        except:
-            pass
-        await interaction.response.send_message("❌ בקשת החיסור נדחתה.", ephemeral=True)
+        
+        if m_id != 0:
+            try:
+                user = await bot.fetch_user(m_id)
+                await user.send("❌ בקשת החיסור שהגשת בשרת Metrolin IL נדחתה על ידי ההנהלה.")
+            except:
+                pass
+        await interaction.response.send_message("❌ בקשת החיסור נדחתה והודעה נשלחה למשתמש.", ephemeral=True)
 class TicketLaunchView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -544,40 +561,52 @@ class MafiaTicketControlView(discord.ui.View):
         modal = UpdateStockModal()
         await interaction.response.send_modal(modal)
 
+# ==================== פקודות הקמה (Setup) נפרדות ועצמאיות לכל חדר ====================
+
 @bot.command()
 @commands.has_permissions(administrator=True)
-async def setup_bot(ctx):
-    """פקודה להקמת כל הפאנלים המעוצבים בערוצים המתאימים בשרת"""
-    ch1 = bot.get_channel(1510196538490622057)
-    if ch1:
-        f1 = discord.File("background.gif", filename="background.gif")
-        em1 = discord.Embed(title="🛡️ פאנל קבלת רולים ואישור כניסה - Metrolin IL", description="עברת ראיון או קבלה לשרת הפשע?\nלחץ על הכפתור הירוק למטה כדי להזין את פרטי הקבלה שלך.\nהטופס יישלח אוטומטית לבדיקת הנהלת השרת לצורך קבלת הדרגות שלך!", color=discord.Color.green())
-        em1.set_image(url="attachment://background.gif")
-        await ch1.send(file=f1, embed=em1, view=AcceptancePanelLaunchView())
+async def setup_verification(ctx):
+    """מציב את פאנל קבלת הרולים ובדיקת המשתמש בחדר שבו שלחת את הפקודה"""
+    file = discord.File("background.gif", filename="background.gif")
+    embed = discord.Embed(title="🛡️ פאנל קבלת רולים ואישור כניסה - Metrolin IL", description="עברת ראיון או קבלה לשרת הפשע?\nלחץ על הכפתור הירוק למטה כדי להזין את פרטי הקבלה שלך.\nהטופס יישלח אוטומטית לבדיקת הנהלת השרת לצורך קבלת הדרגות שלך!", color=discord.Color.green())
+    embed.set_image(url="attachment://background.gif")
+    await ctx.send(file=file, embed=embed, view=AcceptancePanelLaunchView())
+    await ctx.message.delete()
 
-    ch2 = bot.get_channel(1510196539962818652)
-    if ch2:
-        f2 = discord.File("background.gif", filename="background.gif")
-        em2 = discord.Embed(title="🎫 מרכז תמיכה ופניות - Metrolin IL", description="צריך עזרה מצוות השרת, הגשת תלונה או החזר ציוד?\nבחר את קטגוריית הפנייה שלך מתוך התפריט המודרני למטה וערוץ פרטי ייפתח עבורך מיד.", color=discord.Color.blue())
-        em2.set_image(url="attachment://background.gif")
-        await ch2.send(file=f2, embed=em2, view=TicketLaunchView())
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup_tickets(ctx):
+    """מציב את פאנל הטיקטים הרגילים (תלונות/רכבים/חפצים) בחדר שבו שלחת את הפקודה"""
+    file = discord.File("background.gif", filename="background.gif")
+    embed = discord.Embed(title="🎫 מרכז תמיכה ופניות - Metrolin IL", description="צריך עזרה מצוות השרת, הגשת תלונה או החזר ציוד?\nבחר את קטגוריית הפנייה שלך מתוך התפריט המודרני למטה וערוץ פרטי ייפתח עבורך מיד.", color=discord.Color.blue())
+    embed.set_image(url="attachment://background.gif")
+    await ctx.send(file=file, embed=embed, view=TicketLaunchView())
+    await ctx.message.delete()
 
-        f4 = discord.File("background.gif", filename="background.gif")
-        em4 = discord.Embed(title="🕶️ חמ\"ל אספקת נשקים וסמים - המאפיה הרשמית", description="רוצה לבצע הזמנת נשקים חמים או סחורת סמים עבור הארגון שלך?\nבחר את סוג ההברחה בתפריט הדרופדאון למטה וחדר עסקה סודי ייפתח מול ברוני המאפיה.", color=discord.Color.dark_purple())
-        em4.set_image(url="attachment://background.gif")
-        await ch2.send(file=f4, embed=em4, view=MafiaTicketLaunchView())
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup_mafia(ctx):
+    """מציב את פאנל הזמנות המאפיה והמלאי בחדר שבו שלחת את הפקודה"""
+    file = discord.File("background.gif", filename="background.gif")
+    embed = discord.Embed(title="🕶️ חמ\"ל אספקת נשקים וסמים - המאפיה הרשמית", description="רוצה לבצע הזמנת נשקים חמים או סחורת סמים עבור הארגון שלך?\nבחר את סוג ההברחה בתפריט הדרופדאון למטה וחדר עסקה סודי ייפתח מול ברוני המאפיה.", color=discord.Color.dark_purple())
+    embed.set_image(url="attachment://background.gif")
+    await ctx.send(file=file, embed=embed, view=MafiaTicketLaunchView())
+    await ctx.message.delete()
 
-    ch3 = bot.get_channel(1518272315648118864)
-    if ch3:
-        f3 = discord.File("background.gif", filename="background.gif")
-        em3 = discord.Embed(title="📅 מערכת הגשת חיסורים - צוות השרת", description="חבר צוות יקר, במידה ואתה עומד להיעדר מהשרת לפעילות פשע, עליך למלא את טופס החיסור באופן דיגיטלי.\nההיעדרות שלך תועבר לאישור הנהלה ולוג רשמי יתפרסם.", color=discord.Color.gold())
-        em3.set_image(url="attachment://background.gif")
-        await ch3.send(file=f3, embed=em3, view=AbsenceLaunchView())
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup_absence(ctx):
+    """מציב את פאנל הגשת החיסורים לצוות בחדר שבו שלחת את הפקודה"""
+    file = discord.File("background.gif", filename="background.gif")
+    embed = discord.Embed(title="📅 מערכת הגשת חיסורים - צוות השרת", description="חבר צוות יקר, במידה ואתה עומד להיעדר מהשרת לפעילות פשע, עליך למלא את טופס החיסור באופן דיגיטלי.\nההיעדרות שלך תועבר לאישור הנהלה ולוג רשמי יתפרסם.", color=discord.Color.gold())
+    embed.set_image(url="attachment://background.gif")
+    await ctx.send(file=file, embed=embed, view=AbsenceLaunchView())
+    await ctx.message.delete()
 
-    await ctx.send("✅ כל מערכות הפאנלים המודרניות הוקמו ושולחו בהצלחה לערוצים המוגדרים בדיסקורד!")
-
+# הפעלת שרת ה-Flask ששומר על הבוט דולק 24/7 ב-Render
 keep_alive()
 
+# הרצת הבוט הסופית
 token = os.environ.get("DISCORD_TOKEN")
 if token:
     bot.run(token)
