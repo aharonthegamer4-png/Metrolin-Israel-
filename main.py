@@ -128,14 +128,13 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="📝 טופס קבלה חדש ממתין לאישור",
-            description=f"**המשתמש המגיש:** {interaction.user.mention}\n**ID:** `{interaction.user.id}`\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
+            description=f"**המשתמש המגיש:** <@{interaction.user.id}>\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
             color=discord.Color.orange()
         )
         embed.set_image(url="attachment://background.gif")
-        embed.set_footer(text=f"Metrolin IL • מערכת בדיקה")
+        embed.set_footer(text="Metrolin IL • מערכת בדיקה")
         
-        # יצירת מופע דינמי של הכפתורים עם האיידי של המשתמש הספציפי למניעת שגיאות חילוץ
-        await review_channel.send(file=file, embed=embed, view=AcceptanceActionView(target_id=interaction.user.id))
+        await review_channel.send(file=file, embed=embed, view=AcceptanceActionView())
         await interaction.response.send_message("הטופס שלך נשלח בהצלחה לבדיקת הנהלת השרת! אנא המתן לאישור.", ephemeral=True)
 
 class AcceptancePanelLaunchView(discord.ui.View):
@@ -146,14 +145,21 @@ class AcceptancePanelLaunchView(discord.ui.View):
     async def launch_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AcceptanceModal())
 class AcceptanceActionView(discord.ui.View):
-    def __init__(self, target_id: int = 0):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.target_id = target_id
-        # הגדרת ה-Custom IDs בצורה דינמית ומאובטחת שמחזיקה את האיידי בפנים
-        if target_id != 0:
-            self.kick_user_btn.custom_id = f"ac_kick_{target_id}"
-            self.ban_user_btn.custom_id = f"ac_ban_{target_id}"
-            self.select_roles_btn.custom_id = f"ac_app_{target_id}"
+
+    def get_target_id_from_embed(self, message: discord.Message) -> int:
+        """פונקציית עזר חכמה ומאובטחת לחילוץ האיידי של המשתמש מתוך ה-Mention ב-Embed"""
+        try:
+            if message.embeds:
+                description = message.embeds.description
+                for line in description.split("\n"):
+                    if "המשתמש המגיש:" in line:
+                        clean_line = line.replace("<@", "").replace(">", "")
+                        return int(clean_line.split(":")[-1].strip())
+        except Exception as e:
+            print(f"Error parsing target ID from embed description: {e}")
+        return 0
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         required_role_id = 1518269453295685652
@@ -162,18 +168,19 @@ class AcceptanceActionView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="👢 תן קיק (Kick)", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="👢 תן קיק (Kick)", style=discord.ButtonStyle.danger, custom_id="accept_kick_fixed_final", row=0)
     async def kick_user_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # חילוץ האיידי ישירות משם הכפתור שנלחץ ללא תלות בטקסט של ה-Embed
-        c_id = interaction.data['custom_id']
-        target_id = int(c_id.split("_")[-1])
-        
+        target_id = self.get_target_id_from_embed(interaction.message)
+        if target_id == 0:
+            await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את האיידי של המשתמש בטופס!", ephemeral=True)
+            return
+            
         target_member = interaction.guild.get_member(target_id)
         if not target_member:
             await interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
             return
         try:
-            await target_member.kick(reason="נדחה במערכת בדיקת משתמש עלידי ההנהלה")
+            await target_member.kick(reason="נדחה במערכת בדיקת משתמש על ידי ההנהלה")
             await interaction.response.send_message(f"👢 המשתמש {target_member.name} נזרק מהשרת בהצלחה.", ephemeral=True)
             for item in self.children:
                 item.disabled = True
@@ -181,11 +188,13 @@ class AcceptanceActionView(discord.ui.View):
         except Exception as e:
             await interaction.response.send_message(f"❌ שגיאה במתן קיק: {e}", ephemeral=True)
 
-    @discord.ui.button(label="🔨 תן באן (Ban)", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="🔨 תן באן (Ban)", style=discord.ButtonStyle.danger, custom_id="accept_ban_fixed_final", row=0)
     async def ban_user_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        c_id = interaction.data['custom_id']
-        target_id = int(c_id.split("_")[-1])
-        
+        target_id = self.get_target_id_from_embed(interaction.message)
+        if target_id == 0:
+            await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את האיידי של המשתמש בטופס!", ephemeral=True)
+            return
+            
         try:
             await interaction.guild.ban(discord.Object(id=target_id), reason="נדחה במערכת בדיקת משתמש")
             await interaction.response.send_message(f"🔨 האיידי `{target_id}` נחסם מהשרת לצמיתות.", ephemeral=True)
@@ -195,17 +204,18 @@ class AcceptanceActionView(discord.ui.View):
         except Exception as e:
             await interaction.response.send_message(f"❌ שגיאה במתן באן: {e}", ephemeral=True)
 
-    @discord.ui.button(label="🛡️ בחר רולים וסיום (Approve)", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="🛡️ בחר רולים וסיום (Approve)", style=discord.ButtonStyle.success, custom_id="accept_approve_fixed_final", row=1)
     async def select_roles_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        c_id = interaction.data['custom_id']
-        target_id = int(c_id.split("_")[-1])
-        
+        target_id = self.get_target_id_from_embed(interaction.message)
+        if target_id == 0:
+            await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את האיידי של המשתמש בטופס!", ephemeral=True)
+            return
+            
         target_member = interaction.guild.get_member(target_id)
         if not target_member:
             await interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
             return
             
-        # פתיחת תפריט הדרופדאון לבחירת הרולים מתוך חלק 6
         await interaction.response.send_message(f"אנא בחר מהרשימה מטה את הרולים שברצונך לתת ל-{target_member.mention}:", view=RoleSelectionView(target_member, self), ephemeral=True)
 class RoleDropdownSelector(discord.ui.Select):
     def __init__(self, target_member: discord.Member, original_view: discord.ui.View):
@@ -287,7 +297,7 @@ class AbsenceLaunchView(discord.ui.View):
 
     @discord.ui.button(label="📅 מלא טופס חיסור", style=discord.ButtonStyle.blurple, custom_id="launch_absence_modal")
     async def launch_absence(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AcceptanceModal() if False else AbsenceModal())
+        await interaction.response.send_modal(AbsenceModal())
 class AbsenceApprovalView(discord.ui.View):
     def __init__(self, member_id: int = 0, name: str = "", duration: str = ""):
         super().__init__(timeout=None)
@@ -302,12 +312,12 @@ class AbsenceApprovalView(discord.ui.View):
         duration = "לא מוגדר"
         try:
             if message.embeds:
-                if message.embeds[0].footer and message.embeds[0].footer.text:
-                    f_text = message.embeds[0].footer.text
+                if message.embeds.footer and message.embeds.footer.text:
+                    f_text = message.embeds.footer.text
                     if "Absence ID:" in f_text:
                         member_id = int(f_text.split("Absence ID:")[-1].strip())
                         
-                description = message.embeds[0].description
+                description = message.embeds.description
                 for line in description.split("\n"):
                     if "שם המחסיר:" in line:
                         name = line.split("`")[1].strip()
@@ -379,7 +389,7 @@ class TicketLaunchView(discord.ui.View):
         ]
     )
     async def select_ticket(self, interaction: discord.Interaction, select: discord.ui.Select):
-        topic = select.values[0] if isinstance(select.values, list) else select.values
+        topic = select.values if isinstance(select.values, list) else select.values
         guild = interaction.guild
         staff_role = guild.get_role(1518269453295685652)
         
@@ -485,7 +495,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         options=[
             discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
             discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
-            discord.SelectOption(label="אחר / בירור מאפיה", value="other", description="נושאים כלליים הקשורים למאפיה", emoji="💼")
+            discord.SelectOption(label="אחר / בירור מאפיה", value="other", description="נושאים הקשורים למאפיה", emoji="💼")
         ]
     )
     async def select_mafia(self, interaction: discord.Interaction, select: discord.ui.Select):
