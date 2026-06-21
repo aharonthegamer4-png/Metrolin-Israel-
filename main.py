@@ -37,9 +37,9 @@ async def on_ready():
     # הפעלת סטטוס הפיקוח האקטיבי
     await update_bot_status()
     
-    # רישום מחדש של ה-Views הקבועים בבוט
+    # רישום מחדש של ה-Views הקבועים בבוט בצורה מאובטחת וחוקית לדיסקורד
     bot.add_view(AcceptancePanelLaunchView())
-    bot.add_view(AcceptanceActionView(target_id=0))
+    bot.add_view(AcceptanceActionView())
     bot.add_view(TicketLaunchView())
     bot.add_view(TicketControlView())
     bot.add_view(AbsenceLaunchView())
@@ -119,12 +119,13 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="📝 טופס קבלה חדש ממתין לאישור",
-            description=f"**המשתמש המגיש:** {interaction.user.mention} (`{interaction.user.id}`)\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
+            description=f"**המשתמש המגיש:** {interaction.user.mention}\n**מזהה משתמש (ID):** `{interaction.user.id}`\n\n**👤 הגורם המראיין/מקבל:**\n{self.interviewer.value}\n\n**🛡️ רולים מבוקשים:**\n{self.expected_roles.value}",
             color=discord.Color.orange()
         )
         embed.set_image(url="attachment://background.gif")
         
-        await review_channel.send(file=file, embed=embed, view=AcceptanceActionView(target_id=interaction.user.id))
+        # שליחת הטופס לערוץ ההנהלה עם ה-View המאובטח והמתוקן
+        await review_channel.send(file=file, embed=embed, view=AcceptanceActionView())
         await interaction.response.send_message("הטופס שלך נשלח בהצלחה לבדיקת הנהלת השרת! אנא המתן לאישור.", ephemeral=True)
 
 class AcceptancePanelLaunchView(discord.ui.View):
@@ -135,13 +136,20 @@ class AcceptancePanelLaunchView(discord.ui.View):
     async def launch_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AcceptanceModal())
 class AcceptanceActionView(discord.ui.View):
-    def __init__(self, target_id: int):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.target_id = target_id
-        if target_id != 0:
-            self.kick_user_btn.custom_id = f"accept_kick_{target_id}"
-            self.ban_user_btn.custom_id = f"accept_ban_{target_id}"
-            self.select_roles_btn.custom_id = f"accept_select_{target_id}"
+
+    def get_target_id_from_embed(self, message: discord.Message) -> int:
+        """פונקציית עזר לחילוץ האיידי של המשתמש מתוך הודעת ה-Embed של הטופס"""
+        try:
+            if message.embeds:
+                description = message.embeds[0].description
+                for line in description.split("\n"):
+                    if "מזהה משתמש (ID):" in line:
+                        return int(line.split("`")[1])
+        except Exception as e:
+            print(f"Error parsing target ID from embed: {e}")
+        return 0
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         required_role_id = 1518269453295685652
@@ -150,9 +158,14 @@ class AcceptanceActionView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="👢 תן קיק (Kick)", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="👢 תן קיק (Kick)", style=discord.ButtonStyle.danger, custom_id="accept_kick_fixed", row=0)
     async def kick_user_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        target_member = interaction.guild.get_member(self.target_id)
+        target_id = self.get_target_id_from_embed(interaction.message)
+        if target_id == 0:
+            await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את האיידי של המשתמש בטופס!", ephemeral=True)
+            return
+            
+        target_member = interaction.guild.get_member(target_id)
         if not target_member:
             await interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
             return
@@ -162,17 +175,22 @@ class AcceptanceActionView(discord.ui.View):
             button.disabled = True
             await interaction.message.edit(view=self)
         except Exception as e:
-            await interaction.response.send_message(f"❌ שגיאה: {e}", ephemeral=True)
+            await interaction.response.send_message(f"❌ שגיאה במתן קיק: {e}", ephemeral=True)
 
-    @discord.ui.button(label="🔨 תן באן (Ban)", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="🔨 תן באן (Ban)", style=discord.ButtonStyle.danger, custom_id="accept_ban_fixed", row=0)
     async def ban_user_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        target_id = self.get_target_id_from_embed(interaction.message)
+        if target_id == 0:
+            await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את האיידי של המשתמש בטופס!", ephemeral=True)
+            return
+            
         try:
-            await interaction.guild.ban(discord.Object(id=self.target_id), reason="נדחה במערכת בדיקת משתמש")
-            await interaction.response.send_message(f"🔨 האיידי `{self.target_id}` נחסם מהשרת לצמיתות.", ephemeral=True)
+            await interaction.guild.ban(discord.Object(id=target_id), reason="נדחה במערכת בדיקת משתמש")
+            await interaction.response.send_message(f"🔨 האיידי `{target_id}` נחסם מהשרת לצמיתות.", ephemeral=True)
             button.disabled = True
             await interaction.message.edit(view=self)
         except Exception as e:
-            await interaction.response.send_message(f"❌ שגיאה: {e}", ephemeral=True)
+            await interaction.response.send_message(f"❌ שגיאה במתן באן: {e}", ephemeral=True)
 class RoleDropdownSelector(discord.ui.Select):
     def __init__(self, target_member: discord.Member, original_view: discord.ui.View):
         self.target_member = target_member
@@ -188,7 +206,7 @@ class RoleDropdownSelector(discord.ui.Select):
                 break
                 
         super().__init__(
-            placeholder="בחר רולים להענקה למשתמש (ניתן לבחור כמה)...",
+            placeholder="בחר רולים להענקה למשתמש...",
             min_values=1,
             max_values=len(options) if options else 1,
             options=options if options else [discord.SelectOption(label="אין רולים זמינים", value="0")]
@@ -221,12 +239,18 @@ class RoleSelectionView(discord.ui.View):
         super().__init__(timeout=60)
         self.add_item(RoleDropdownSelector(target_member, original_view))
 
-@discord.ui.button(label="🛡️ בחר רולים וסיום (Approve)", style=discord.ButtonStyle.success, row=0)
+@discord.ui.button(label="🛡️ בחר רולים וסיום (Approve)", style=discord.ButtonStyle.success, custom_id="accept_approve_fixed", row=0)
 async def select_roles_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-    target_member = interaction.guild.get_member(self.target_id)
+    target_id = self.get_target_id_from_embed(interaction.message)
+    if target_id == 0:
+        await interaction.response.send_message("❌ שגיאה: לא הצלחתי למצוא את האיידי של המשתמש בטופס!", ephemeral=True)
+        return
+        
+    target_member = interaction.guild.get_member(target_id)
     if not target_member:
         await interaction.response.send_message("❌ המשתמש לא נמצא בשרת יותר!", ephemeral=True)
         return
+        
     await interaction.response.send_message("אנא בחר מהרשימה מטה את הרולים שברצונך לתת לו:", view=RoleSelectionView(target_member, self), ephemeral=True)
 
 AcceptanceActionView.select_roles_btn = select_roles_btn
@@ -509,7 +533,7 @@ class MafiaTicketControlView(discord.ui.View):
             async def on_submit(self, sub_interaction: discord.Interaction):
                 try:
                     new_val = int(self.amount.value)
-                    if "weapon" in str(sub_interaction.message.embeds[0].title).lower() or "נשק" in str(sub_interaction.message.embeds[0].title):
+                    if "weapon" in str(sub_interaction.message.embeds.title).lower() or "נשק" in str(sub_interaction.message.embeds.title):
                         MAFIA_INVENTORY["weapons"] = new_val
                     else:
                         MAFIA_INVENTORY["drugs"] = new_val
