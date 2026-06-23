@@ -527,7 +527,7 @@ class MafiaTicketLaunchView(discord.ui.View):
 
     @discord.ui.select(
         placeholder="בחר סוג הזמנת מאפיה...",
-        custom_id="mafia_ticket_launch_select_fixed",
+        custom_id="mafia_ticket_launch_select_fixed_v10",
         options=[
             discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
             discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
@@ -537,7 +537,10 @@ class MafiaTicketLaunchView(discord.ui.View):
     async def select_mafia(self, interaction: discord.Interaction, select: discord.ui.Select):
         chosen_value = select.values if isinstance(select.values, list) else select.values
         guild = interaction.guild
-        mafia_staff = guild.get_role(1518267524050063440)
+        
+        # הגדרת רול צוות המאפיה המורשה לפי ה-ID המדויק שלך
+        mafia_staff_id = 1518267524050063440
+        mafia_staff = guild.get_role(mafia_staff_id)
         
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -547,6 +550,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         if mafia_staff:
             overwrites[mafia_staff] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
+        # פתיחת חדר חדש בדיוק כמו מערכת טיקטים רגילה
         mafia_channel = await guild.create_text_channel(
             name=f"מאפיה-{interaction.user.name}",
             category=interaction.channel.category,
@@ -564,7 +568,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         file = discord.File("background.gif", filename="background.gif")
         embed = discord.Embed(
             title="🕶️ חמ\"ל הזמנות ואספקת מאפיה - Metrolin IL",
-            description=f"ברוך הבא {interaction.user.mention} ,\nפתחתי עבורך פניית מאפיה מאובטחת.\n\n**📊 נתוני מלאי עדכניים בשרת:**\n{stock_text}\n\nצוות המאפיה יגיע לסגור איתך את העסקה מיד.",
+            description=f"ברוך הבא {interaction.user.mention},\nפתחתי עבורך פניית מאפיה מאובטחת ועסקת הברחה.\n\n**📊 נתוני מלאי עדכניים בשרת:**\n{stock_text}\n\nצוות המאפיה יגיע לסגור איתך את העסקה מיד.",
             color=discord.Color.dark_purple()
         )
         embed.set_image(url="attachment://background.gif")
@@ -577,7 +581,7 @@ class MafiaPanelLaunchView(discord.ui.View):
 
     @discord.ui.select(
         placeholder="בחר סוג הזמנת מאפיה...",
-        custom_id="mafia_panel_select_final_fixed_v9",
+        custom_id="mafia_panel_select_final_fixed_v10",
         options=[
             discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
             discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
@@ -589,8 +593,9 @@ class MafiaPanelLaunchView(discord.ui.View):
         launcher = MafiaTicketLaunchView()
         await launcher.select_mafia(interaction, select)
 
-    @discord.ui.button(label="⚙️ ניהול ועדכון מלאי (צוות בלבד)", style=discord.ButtonStyle.secondary, custom_id="mafia_panel_btn_fixed_v9", row=1)
+    @discord.ui.button(label="⚙️ ניהול ועדכון מלאי (צוות בלבד)", style=discord.ButtonStyle.secondary, custom_id="mafia_panel_btn_fixed_v10", row=1)
     async def manage_stock_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # הגדרת הגבלת אבטחה קשיחה: רק משתמשים עם הרול שנתת יכולים ללחוץ!
         required_role_id = 1518267524050063440
         if required_role_id not in [role.id for role in interaction.user.roles]:
             await interaction.response.send_message("❌ אין לך את רול צוות המאפיה הנדרש לניהול החנות!", ephemeral=True)
@@ -635,6 +640,7 @@ class MafiaTicketControlView(discord.ui.View):
         self.ticket_type = ticket_type
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # אבטחה קשיחה: רק בעלי רול צוות המאפיה יכולים לגעת בכפתורים בתוך הטיקט
         required_role_id = 1518267524050063440
         if required_role_id not in [role.id for role in interaction.user.roles]:
             await interaction.response.send_message("❌ רק רול צוות מאפיה מורשה לנהל טיקט וסחורה זו!", ephemeral=True)
@@ -691,7 +697,7 @@ class MafiaTicketControlView(discord.ui.View):
                     else:
                         await sub_interaction.response.send_message("❌ המשתמש לא נמצא בשרת.", ephemeral=True)
                 except:
-                    await sub_interaction.response.send_message("❌ איידי לא תקין.", ephemeral=True)
+                    await sub_interaction.response.send_message("❌ m_update_stock לא תקין.", ephemeral=True)
         await interaction.response.send_modal(AddMafiaUserModal())
 
     @discord.ui.button(label="📦 עדכן מלאי (מלאי סחורה)", style=discord.ButtonStyle.primary, custom_id="m_update_stock")
@@ -773,6 +779,7 @@ async def setup_mafia(ctx):
         ), 
         color=discord.Color.dark_purple()
     )
+    # התמונה מוגדרת פעם אחת בלבד רק למטה למראה נקי ואסתטי!
     embed.set_image(url="attachment://background.gif")
     
     panel_msg = await ctx.send(file=file, embed=embed, view=MafiaPanelLaunchView())
@@ -785,7 +792,7 @@ async def setup_absence(ctx):
     file = discord.File("background.gif", filename="background.gif")
     embed = discord.Embed(title="📅 מערכת הגשת חיסורים - צוות השרת", description="חבר צוות יקר, במידה ואתה עומד להיעדר מהשרת לפעילות פשע, עליך למלא את טופס החיסור באופן דיגיטלי.\nההיעדרות שלך תועבר לאישור הנהלה ולוג רשמי יתפרסם.", color=discord.Color.gold())
     embed.set_image(url="attachment://background.gif")
-    await ctx.send(file=file, embed=embed, view=AbsenceLaunchView())
+    await ctx.send(file=file, embed=embed, view=AcceptanceModal() if False else AbsenceLaunchView())
     await ctx.message.delete()
 
 keep_alive()
