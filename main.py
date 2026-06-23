@@ -5,7 +5,7 @@ import asyncio
 import requests
 from keep_alive import keep_alive
 
-# הגדרת אינטנטים מלאים וקידומת פקודות כפי שביקשת
+# הגדרת אינטנטים מלאים וקידומת פקודות
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
@@ -25,29 +25,30 @@ USER_TICKETS = {}  # מקשר בין Channel ID ל-User ID של פותח הטי�
 # מילון גלובלי למעקב אחרי קישורי הזמנה (Invite Tracker)
 invites = {}
 
-# קוד השרת הייעודי שלך עבור ה-FiveM Tracker API
+# קוד השרת המעודכן שלך עבור ה-FiveM Tracker API
 FIVEM_JOIN_CODE = "4agj4q"
 @tasks.loop(minutes=1)
 async def update_fivem_status():
-    """מערכת עדכון סטטוס אוטומטית שמתחברת לשרת ה-FiveM שלך ומציגה את כמות השחקנים בלייב"""
+    """מערכת סטטוס משודרגת העוקפת את החסימות ומציגה שחקנים בלייב"""
     try:
         url = f"https://fivem.net{FIVEM_JOIN_CODE}"
-        # שליחת בקשה מאובטחת לשרתי cfx.re עם User-Agent תקין
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Origin": "https://fivem.net",
+            "Referer": "https://fivem.net/"
+        }
         response = requests.get(url, headers=headers, timeout=10)
-        
         if response.status_code == 200:
             data = response.json()
-            if "data" in data and "clients" in data["data"]:
-                current_players = data["data"]["clients"]
-                max_players = data["data"].get("vars", {}).get("sv_maxclients", "128")
-                status_text = f"{current_players}/{max_players} Players 🎮"
-                await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=status_text))
+            if "Data" in data and "clients" in data["Data"]:
+                current_players = data["Data"]["clients"]
+                max_players = data["Data"].get("Data", {}).get("sv_maxclients", "128")
+                await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f"{current_players}/{max_players} Players 🎮"))
                 return
     except Exception as e:
-        print(f"Error fetching FiveM server status: {e}")
+        print(f"FiveM Status bypass error: {e}")
         
-    # במידה והשרת לא זמין או שיש שגיאה, הבוט יציג את כמות המחוברים לדיסקורד כגיבוי
+    # גיבוי אוטומטי לסטטוס הדיסקורד במידה וה-API לא מגיב זמנית
     try:
         total_members = 0
         online_members = 0
@@ -56,10 +57,9 @@ async def update_fivem_status():
             for member in guild.members:
                 if member.status != discord.Status.offline and not member.bot:
                     online_members += 1
-        status_text = f"{online_members}/{total_members} Active Members ⚡"
-        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=status_text))
-    except Exception as ex:
-        print(f"Backup status error: {ex}")
+        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f"{online_members}/{total_members} Active Members ⚡"))
+    except:
+        pass
 
 @bot.event
 async def on_ready():
@@ -71,7 +71,6 @@ async def on_ready():
         except:
             pass
             
-    # הפעלת משימת עדכון הסטטוס של FiveM ברקע
     if not update_fivem_status.is_running():
         update_fivem_status.start()
     
@@ -161,7 +160,7 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         embed.set_image(url="attachment://background.gif")
         embed.set_footer(text="Metrolin IL • מערכת בדיקה")
         
-        # בניית חדר הטיקט הפרטי של הבדיקה: שולח את הודעת המידע יחד עם שני תפריטי הדרופדאון והכפתורים המשולבים לתצוגה חלקה כמו בטיקטים!
+        # בניית חדר הטיקט הפרטי של הבדיקה
         action_view = AcceptanceActionView()
         action_view.add_item(CrimeRoleDropdown(interaction.user, action_view))
         action_view.add_item(CrimeRoleDropdownPartTwo(interaction.user, action_view))
@@ -317,7 +316,7 @@ class CrimeRoleDropdownPartTwo(discord.ui.Select):
             discord.SelectOption(label="ארגון פשיעה - לושי", value="1510196537802887175", emoji="🌌"),
             discord.SelectOption(label="ראש ארגון - אברג'יל", value="1510196537802887173", emoji="🌌"),
             discord.SelectOption(label="יד ימין - אברג'יל", value="1510196537802887172", emoji="🌌"),
-            discord.SelectOption(label="ארגון פשיעה - אברג'יל", value="151019653702887168" if False else "1510196537802887168", emoji="🌌"),
+            discord.SelectOption(label="ארגון פשיעה - אברג'יל", value="1510196537802887168", emoji="🌌"),
             discord.SelectOption(label="ראש ארגון - כללי", value="1510196537555161178", emoji="🌌"),
             discord.SelectOption(label="יד ימין - כללי", value="1510196537555161177", emoji="🌌"),
             discord.SelectOption(label="ארגון פשיעה - כללי", value="1510196537555161173", emoji="🌌"),
@@ -351,7 +350,7 @@ class RoleSelectionView(discord.ui.View):
         self.add_item(CrimeRoleDropdownPartTwo(target_member, parent_view))
 class AbsenceModal(discord.ui.Modal, title="טופס הגשת חיסור - צוות פשע"):
     name = discord.ui.TextInput(label="שם מלא / כינוי בשרת:", placeholder="הכנס את שמך כאן", required=True)
-    duration = discord.ui.TextInput(label="לכמה זמן החיסור? (טקסט חופשי)", placeholder="למשל: חצי שעה לסידורים, יומיים, שבוע...", required=True)
+    duration = discord.ui.TextInput(label="לכמה זמן החיסור? (טקסט חופשי)", placeholder="למשל: חצי שעה, יומיים, שבוע...", required=True)
     reason = discord.ui.TextInput(label="סיבת החיסור:", placeholder="פרט בקצרה את סיבת החיסור שלך", style=discord.TextStyle.paragraph, required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -369,9 +368,15 @@ class AbsenceModal(discord.ui.Modal, title="טופס הגשת חיסור - צו�
             color=discord.Color.dark_gold()
         )
         embed.set_image(url="attachment://background.gif")
-        embed.set_footer(text=f"Absence ID: {interaction.user.id}")
+        embed.set_footer(text="Metrolin IL • מערכת חיסורים")
         
-        await approval_channel.send(file=file, embed=embed, view=AbsenceApprovalView(member_id=interaction.user.id, name=self.name.value, duration=self.duration.value))
+        view = AbsenceApprovalView(
+            member_id=interaction.user.id, 
+            name=self.name.value, 
+            duration=self.duration.value
+        )
+        
+        await approval_channel.send(file=file, embed=embed, view=view)
         await interaction.response.send_message("✅ בקשת החיסור שלך נשלחה בהצלחה לבדיקת ההנהלה!", ephemeral=True)
 
 class AbsenceLaunchView(discord.ui.View):
@@ -380,35 +385,16 @@ class AbsenceLaunchView(discord.ui.View):
 
     @discord.ui.button(label="📅 מלא טופס חיסור", style=discord.ButtonStyle.blurple, custom_id="launch_absence_modal")
     async def launch_absence(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AbsenceModal())
+        await interaction.response.send_modal(AcceptanceModal() if False else AbsenceModal())
 class AbsenceApprovalView(discord.ui.View):
     def __init__(self, member_id: int = 0, name: str = "", duration: str = ""):
         super().__init__(timeout=None)
-        self.member_id = member_id
-        self.name = name
-        self.duration = duration
-
-    def parse_absence_embed(self, message: discord.Message):
-        """פונקציית עזר משודרגת לחילוץ מושלם של נתוני החיסור החופשיים מתוך ה-Embed וה-Footer"""
-        member_id = 0
-        name = "לא ידוע"
-        duration = "לא מוגדר"
-        try:
-            if message.embeds:
-                if message.embeds.footer and message.embeds.footer.text:
-                    f_text = message.embeds.footer.text
-                    if "Absence ID:" in f_text:
-                        member_id = int(f_text.split("Absence ID:")[-1].strip())
-                        
-                description = message.embeds.description
-                for line in description.split("\n"):
-                    if "שם המחסיר:" in line:
-                        name = line.split("`").strip()
-                    elif "משך החיסור:" in line:
-                        duration = line.split("`").strip()
-        except Exception as e:
-            print(f"Error parsing absence embed: {e}")
-        return member_id, name, duration
+        if member_id != 0:
+            # הפיכת נתונים מחורבשים למזהה בטוח המבוסס על קו תחתון
+            safe_name = name.replace("_", " ").strip()
+            safe_dur = duration.replace("_", " ").strip()
+            self.approve_btn.custom_id = f"ab_app_{member_id}_{safe_name}_{safe_dur}"
+            self.deny_btn.custom_id = f"ab_den_{member_id}"
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         required_role_id = 1518269453295685652
@@ -422,8 +408,16 @@ class AbsenceApprovalView(discord.ui.View):
         public_log_id = 1510196538490622058
         public_channel = interaction.guild.get_channel(public_log_id)
         
-        m_id, m_name, m_duration = self.parse_absence_embed(interaction.message)
-        final_id = m_id if m_id != 0 else self.member_id
+        c_id = interaction.data['custom_id']
+        parts = c_id.split("_")
+        
+        if len(parts) >= 5:
+            user_id = parts[2]
+            user_name = parts[3]
+            user_duration = parts[4]
+        else:
+            await interaction.response.send_message("❌ שגיאה: טופס זה פג תוקף או שבוצע שינוי, אנא הגש בקשת חיסור חדשה!", ephemeral=True)
+            return
         
         for item in self.children:
             item.disabled = True
@@ -433,7 +427,7 @@ class AbsenceApprovalView(discord.ui.View):
             file = discord.File("background.gif", filename="background.gif")
             embed = discord.Embed(
                 title="📢 עדכון סטטוס חיסורי צוות פשע",
-                description=f"**איש הצוות:** <@{final_id}>\n**שם הצוות:** `{m_name if m_name != 'לא ידוע' else self.name}`\n**זמן החיסור:** `{m_duration if m_duration != 'לא מוגדר' else self.duration}`\n\n**סטטוס:** אושר באופן רשמי ע\"י ההנהלה ✅",
+                description=f"**איש הצוות:** <@{user_id}>\n**שם הצוות:** `{user_name}`\n**זמן החיסור:** `{user_duration}`\n\n**סטטוס:** אושר באופן רשמי ע\"י ההנהלה ✅",
                 color=discord.Color.green()
             )
             embed.set_image(url="attachment://background.gif")
@@ -443,16 +437,17 @@ class AbsenceApprovalView(discord.ui.View):
 
     @discord.ui.button(label="❌ דחה חיסור", style=discord.ButtonStyle.danger, custom_id="abs_deny_fixed_btn")
     async def deny_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        m_id, _, _ = self.parse_absence_embed(interaction.message)
-        final_id = m_id if m_id != 0 else self.member_id
+        c_id = interaction.data['custom_id']
+        parts = c_id.split("_")
+        user_id = parts[2] if len(parts) >= 3 else 0
         
         for item in self.children:
             item.disabled = True
         await interaction.message.edit(view=self)
         
-        if final_id != 0:
+        if user_id != 0:
             try:
-                user = await bot.fetch_user(final_id)
+                user = await bot.fetch_user(int(user_id))
                 await user.send("❌ בקשת החיסור שהגשת בשרת Metrolin IL נדחתה על ידי ההנהלה.")
             except:
                 pass
@@ -531,7 +526,6 @@ class TicketControlView(discord.ui.View):
                 log_channel_id = 1510196539962818653
                 log_channel = sub_interaction.guild.get_channel(log_channel_id)
                 
-                # שליפת פותח הטיקט האמיתי מתוך הזיכרון החכם של הבוט
                 creator_id = USER_TICKETS.get(sub_interaction.channel.id, 0)
                 creator_mention = f"<@{creator_id}>" if creator_id != 0 else "`לא נמצא בזיכרון`"
                 
@@ -581,7 +575,7 @@ class MafiaTicketLaunchView(discord.ui.View):
 
     @discord.ui.select(
         placeholder="בחר סוג הזמנת מאפיה...",
-        custom_id="mafia_ticket_select",
+        custom_id="mafia_ticket_launch_select_fixed",
         options=[
             discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
             discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
@@ -589,7 +583,7 @@ class MafiaTicketLaunchView(discord.ui.View):
         ]
     )
     async def select_mafia(self, interaction: discord.Interaction, select: discord.ui.Select):
-        chosen_value = select.values if isinstance(select.values, list) else select.values
+        chosen_value = select.values[0] if isinstance(select.values, list) else select.values
         guild = interaction.guild
         mafia_staff = guild.get_role(1518267524050063440)
         
@@ -607,7 +601,6 @@ class MafiaTicketLaunchView(discord.ui.View):
             overwrites=overwrites
         )
         
-        # שמירת פותח חדר המאפיה בזיכרון המערכת למניעת באגים
         USER_TICKETS[mafia_channel.id] = interaction.user.id
         
         stock_text = "💼 בירור כללי - אין ניהול מלאי ישיר לפנייה זו."
@@ -632,7 +625,7 @@ class MafiaPanelLaunchView(discord.ui.View):
 
     @discord.ui.select(
         placeholder="בחר סוג הזמנת מאפיה...",
-        custom_id="mafia_ticket_select_v2",
+        custom_id="mafia_ticket_panel_select_fixed_v3",
         options=[
             discord.SelectOption(label="הזמנת נשקים חמים", value="weapons", description="פתיחת פנייה לרכישת נשק ותחמושת", emoji="🔫"),
             discord.SelectOption(label="הזמנת סמים / חומרים", value="drugs", description="פתיחת פנייה לרכישת סחורה לא חוקית", emoji="🌿"),
@@ -644,7 +637,7 @@ class MafiaPanelLaunchView(discord.ui.View):
         launcher = MafiaTicketLaunchView()
         await launcher.select_mafia(interaction, select)
 
-    @discord.ui.button(label="⚙️ ניהול ועדכון מלאי (צוות בלבד)", style=discord.ButtonStyle.secondary, custom_id="mafia_owner_manage_stock", row=1)
+    @discord.ui.button(label="⚙️ ניהול ועדכון מלאי (צוות בלבד)", style=discord.ButtonStyle.secondary, custom_id="mafia_owner_manage_stock_fixed_v3", row=1)
     async def manage_stock_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         required_role_id = 1518267524050063440
         if required_role_id not in [role.id for role in interaction.user.roles]:
@@ -746,7 +739,7 @@ class MafiaTicketControlView(discord.ui.View):
                     else:
                         await sub_interaction.response.send_message("❌ המשתמש לא נמצא בשרת.", ephemeral=True)
                 except:
-                    await sub_interaction.response.send_message("❌ m_update_stock לא תקין.", ephemeral=True)
+                    await sub_interaction.response.send_message("❌ איידי לא תקין.", ephemeral=True)
         await interaction.response.send_modal(AddMafiaUserModal())
 
     @discord.ui.button(label="📦 עדכן מלאי (מלאי סחורה)", style=discord.ButtonStyle.primary, custom_id="m_update_stock")
