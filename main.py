@@ -26,7 +26,7 @@ USER_TICKETS = {}  # מקשר בין Channel ID ל-User ID של פותח הטי�
 invites = {}
 
 # קוד השרת הייעודי שלך עבור ה-FiveM Tracker API
-FIVEM_JOIN_CODE = "mxkrjv"
+FIVEM_JOIN_CODE = "4agj4q"
 @tasks.loop(minutes=1)
 async def update_fivem_status():
     """מערכת עדכון סטטוס אוטומטית שמתחברת לשרת ה-FiveM שלך ומציגה את כמות השחקנים בלייב"""
