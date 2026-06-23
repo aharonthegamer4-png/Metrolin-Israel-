@@ -138,10 +138,17 @@ class AcceptanceModal(discord.ui.Modal, title="טופס בדיקה וקבלת ר
         embed.set_image(url="attachment://background.gif")
         embed.set_footer(text="Metrolin IL • מערכת בדיקה")
         
-        # שליחת הודעת הניהול לערוץ
-        sent_message = await review_channel.send(file=file, embed=embed, view=AcceptanceActionView())
+        # 1. יצירת מופע של הכפתורים הראשיים (קיק, באן, סיום)
+        action_view = AcceptanceActionView()
         
-        # נעילת הנתון בזיכרון הגלובלי לפי מזהה ההודעה
+        # 2. שילוב שני הדרופדאונים של הרולים ישירות לתוך אותה הודעה!
+        action_view.add_item(CrimeRoleDropdown(interaction.user, action_view))
+        action_view.add_item(CrimeRoleDropdownPartTwo(interaction.user, action_view))
+        
+        # 3. שליחת ההודעה המשולבת לערוץ הניהול
+        sent_message = await review_channel.send(file=file, embed=embed, view=action_view)
+        
+        # 4. נעילת הנתון במערכת הזיכרון לפי מזהה ההודעה
         USER_FORMS[sent_message.id] = interaction.user.id
         
         await interaction.response.send_message("הטופס שלך נשלח בהצלחה לבדיקת הנהלת השרת! אנא המתן לאישור.", ephemeral=True)
@@ -153,7 +160,6 @@ class AcceptancePanelLaunchView(discord.ui.View):
     @discord.ui.button(label="📝 הגש טופס בדיקה / קבלת רולים", style=discord.ButtonStyle.success, custom_id="launch_acceptance_modal")
     async def launch_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AcceptanceModal())
-class AcceptanceActionView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.selected_roles_pool = []
